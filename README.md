@@ -1,32 +1,47 @@
 # ddc_input_claim
 
-Ansible-Role für einen host-lokalen DDC/CI-Claim: Ein Rechner setzt Monitor-VCP-Werte beim Boot sowie beim Erscheinen eines USB-Triggergeräts.
+Ansible role that claims DDC/CI monitor settings on the local host. It runs at boot and when a configured USB trigger device appears.
 
-## Sicherheitsmodell
+Install from a Git tag. Do not pin `main`.
 
-Vor jedem automatischen Claim prüft das installierte Gate-Skript ausschließlich über Sysfs:
+## Requirements
 
-1. Ein passender Monitor ist per DRM verbunden (EDID-Hersteller und optional Modell-Substring).
-2. Ein passender USB-KVM-Hub ist vorhanden.
-3. Das USB-Triggergerät ist ein Nachkomme dieses KVM-Hubs.
+- systemd and udev
+- `i2c-dev` in the target kernel
+- A DDC/CI-capable monitor
+- Collection `community.general` (used for `community.general.modprobe`)
 
-Fehlt eine Bedingung, endet das Script mit Exit-Code 0 und führt keinen DDC-Befehl aus. Das macht die Role für mobile Hosts geeignet: An einem anderen Arbeitsplatz entstehen weder lange Retries noch Änderungen am dortigen Monitor.
+Supported platforms: Debian, Ubuntu, Fedora, RHEL-compatible distributions, Arch Linux, and CachyOS.
 
-## Unterstützte Plattformen
+```bash
+ansible-galaxy collection install -r requirements.yml
+```
 
-Ubuntu, Debian, Fedora, RHEL-kompatible Distributionen sowie Arch Linux/CachyOS. Die Role verwendet `ansible.builtin.package`, systemd und udev.
-
-## Voraussetzungen
-
-- systemd/udev
-- `i2c-dev` im Zielkernel
-- ein DDC/CI-fähiger Monitor
-- Ansible Collection `community.general` ist nicht erforderlich
-
-## Beispiel
+## Install the role
 
 ```yaml
-- hosts: clients
+# requirements.yml of a consuming playbook repo
+roles:
+  - name: ddc_input_claim
+    src: https://github.com/dontaskmeformyname/ansible-role-ddc-input-claim.git
+    scm: git
+    version: v0.1.0
+
+collections:
+  - name: community.general
+    version: ">=8.0.0"
+```
+
+```bash
+ansible-galaxy install -r requirements.yml
+```
+
+## Example
+
+The USB and EDID values below are **examples**, not defaults. Replace them with IDs from `lsusb` and `ddcutil detect` on the target host.
+
+```yaml
+- hosts: workstations
   become: true
   roles:
     - role: ddc_input_claim
@@ -34,63 +49,77 @@ Ubuntu, Debian, Fedora, RHEL-kompatible Distributionen sowie Arch Linux/CachyOS.
         ddc_claim_actions:
           - { bus: "7", feature: "0x60", value: "0x0f" }
         ddc_gate_monitor:
-          edid_mfg: "SAM"
-          edid_name: "G95NC"
+          edid_mfg: "SAM"          # example
+          edid_name: "G95NC"       # example
         ddc_gate_kvm_usb:
-          vendor: "05e3"
-          product: "0610"
+          vendor: "05e3"           # example Genesys hub
+          product: "0610"          # example
         ddc_gate_trigger_usb:
-          vendor: "046a"
-          product: "00ab"
+          vendor: "046a"           # example Cherry keyboard
+          product: "00ab"          # example
 ```
 
-`ddc_claim_actions` ist bewusst generisch. Eine Aktion entspricht einem `ddcutil setvcp <feature> <value> --bus <bus> --noverify`.
-
-## Variablen
-
-| Variable | Typ | Standard | Bedeutung |
-|---|---:|---|---|
-| `ddc_claim_actions` | Liste | `[]` | Pflicht. DDC-Operationen in Ausführungsreihenfolge |
-| `ddc_claim_retries` | Integer | `5` | Anzahl Versuche pro Claim-Lauf |
-| `ddc_claim_retry_delay` | Integer | `2` | Pause zwischen Versuchen in Sekunden |
-| `ddc_claim_boot_enabled` | Boolean | `true` | Claim-Oneshot beim Boot aktivieren |
-| `ddc_gate_monitor.edid_mfg` | String | `""` | EDID-Hersteller, z. B. `SAM`; leer deaktiviert den Teilcheck |
-| `ddc_gate_monitor.edid_name` | String | `""` | optionaler Modell-Substring; leer deaktiviert ihn |
-| `ddc_gate_kvm_usb.vendor/product` | String | `""` | KVM-Hub USB-VID/PID; beide nötig |
-| `ddc_gate_trigger_usb.vendor/product` | String | `""` | Triggergerät USB-VID/PID; beide nötig |
-
-## Manuelle Ausführung
+Each `ddc_claim_actions` item maps to:
 
 ```bash
-# Gleiche Gates wie Boot und udev
+ddcutil setvcp <feature> <value> --bus <bus> --noverify
+```
+
+## Safety gates
+
+Automatic claims run only when all three Sysfs checks pass:
+
+1. A connected DRM display matches `ddc_gate_monitor` (EDID manufacturer, optional model substring).
+2. A USB hub matching `ddc_gate_kvm_usb` is present.
+3. The trigger device matching `ddc_gate_trigger_usb` is a **child** of that hub.
+
+If any check fails, the script exits 0 and does not send DDC commands. That keeps the role safe on laptops used at other desks.
+
+Empty gate values are a configuration error, not a disabled gate.
+
+## Variables
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `ddc_claim_actions` | `[]` | Required. Ordered list of `{bus, feature, value}` |
+| `ddc_claim_retries` | `5` | Attempts per claim run |
+| `ddc_claim_retry_delay` | `2` | Seconds between attempts |
+| `ddc_claim_boot_enabled` | `true` | Enable the boot oneshot |
+| `ddc_gate_monitor.edid_mfg` | `""` | Required. EDID manufacturer, e.g. `SAM` |
+| `ddc_gate_monitor.edid_name` | `""` | Optional model substring |
+| `ddc_gate_kvm_usb.vendor` / `product` | `""` | Required. KVM hub USB IDs |
+| `ddc_gate_trigger_usb.vendor` / `product` | `""` | Required. Trigger device USB IDs |
+
+## Manual run
+
+```bash
 sudo /usr/local/libexec/ddc-input-claim
 sudo systemctl start ddc-input-claim.service
 
-# Gates absichtlich übergehen; nur für Tests
+# Skip gates (tests only)
 sudo /usr/local/libexec/ddc-input-claim --force
 
 journalctl -t ddc-input-claim -e
 ```
 
-## Anpassungen nach Topologieänderungen
+## Topology changes
 
-I²C-Busnummern können sich nach Dock-, GPU- oder Kerneländerungen ändern. Neu ermitteln:
+I2C bus numbers move after GPU, dock, or kernel changes:
 
 ```bash
 sudo modprobe i2c-dev
 sudo ddcutil detect
 ```
 
-Danach `bus` in `ddc_claim_actions` anpassen. USB-IDs bestimmen:
+Update `bus` in `ddc_claim_actions`. USB IDs:
 
 ```bash
 lsusb
-# Detail inklusive Parentpfad:
 udevadm info --attribute-walk --name=/dev/bus/usb/BBB/DDD
 ```
 
-Wenn mehrere baugleiche Hubs existieren, ist der Parent-Check entscheidend: Die Tastatur muss im USB-Sysfs unter dem konfigurierten KVM-Hub liegen. Der Gate-Code prüft genau diese Vorfahrenbeziehung und nicht nur eine globale VID:PID-Suche.
+If several hubs share the same VID:PID, the parent walk is mandatory: the keyboard must sit under the configured KVM hub in Sysfs.
 
-## Samsung G95NC
+## Samsung Odyssey G95NC
 
-Der Standard-VCP-Code `0x60` verhält sich beim G95NC nicht MCCS-konform und ist nicht ausreichend für pane-spezifische PBP-Steuerung. Das Projekt [mwd102/g95nc-ddc](https://github.com/mwd102/g95nc-ddc) dokumentiert proprietäre Codes für Layout und Pane-Quellen. Diese Role installiert oder verwendet dieses Backend bewusst noch nicht, bis die konkreten Befehle und Wirkungen lokal validiert sind.
+VCP `0x60` is not a reliable per-pane PBP selector on this model. Vendor codes documented by [mwd102/g95nc-ddc](https://github.com/mwd102/g95nc-ddc) are not automated by this role until locally validated.

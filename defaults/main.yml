@@ -1,6 +1,6 @@
 ---
-# Pflicht: eine oder mehrere DDC-Schreiboperationen.
-# Beispiel:
+# Required: one or more DDC write operations.
+# Example only, not a default:
 # ddc_claim_actions:
 #   - { bus: "7", feature: "0x60", value: "0x0f" }
 ddc_claim_actions: []
@@ -9,8 +9,8 @@ ddc_claim_retries: 5
 ddc_claim_retry_delay: 2
 ddc_claim_boot_enabled: true
 
-# Alle drei Gates sind für automatisches Claiming erforderlich.
-# Leere Werte bedeuten: Role-Konfigurationsfehler, nicht Gate deaktiviert.
+# All three gates are required for automatic claiming.
+# Empty strings are a configuration error, not a disabled gate.
 ddc_gate_monitor:
   edid_mfg: ""
   edid_name: ""

@@ -11,10 +11,12 @@ galaxy_info:
     - name: EL
     - name: Fedora
     - name: ArchLinux
-galaxy_tags:
-  - ddc
-  - ddcutil
-  - monitor
-  - udev
-  - systemd
+  galaxy_tags:
+    - ddc
+    - ddcutil
+    - monitor
+    - udev
+    - systemd
+collections:
+  - community.general
 dependencies: []
