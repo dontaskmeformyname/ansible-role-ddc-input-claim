@@ -1,0 +1,12 @@
+[Unit]
+Description=Claim DDC monitor inputs when all local gates match
+After=systemd-modules-load.service
+Wants=systemd-modules-load.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/ddc-input-claim
+TimeoutStartSec={{ ((ddc_claim_retries | int) * (ddc_claim_retry_delay | int) + 15) }}s
+
+[Install]
+WantedBy=multi-user.target

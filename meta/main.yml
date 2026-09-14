@@ -1,0 +1,20 @@
+---
+galaxy_info:
+  role_name: ddc_input_claim
+  author: Alexander Becker
+  description: Gated DDC/CI input claim triggered by boot or USB device add
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Debian
+    - name: Ubuntu
+    - name: EL
+    - name: Fedora
+    - name: ArchLinux
+galaxy_tags:
+  - ddc
+  - ddcutil
+  - monitor
+  - udev
+  - systemd
+dependencies: []

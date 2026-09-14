@@ -1,0 +1,8 @@
+---
+- name: udev Regeln neu laden
+  ansible.builtin.command: udevadm control --reload-rules
+  changed_when: false
+
+- name: systemd daemon neu laden
+  ansible.builtin.systemd_service:
+    daemon_reload: true

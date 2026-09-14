@@ -1,0 +1,3 @@
+# Startet keinen udev RUN+-Child. systemd uebernimmt den Claim ausserhalb
+# des udev-Worker-Lebenszyklus. Das Gate wird im Claim-Skript erneut geprueft.
+ACTION=="add", SUBSYSTEM=="usb", ENV{ID_VENDOR_ID}=="{{ ddc_gate_trigger_usb.vendor | lower }}", ENV{ID_MODEL_ID}=="{{ ddc_gate_trigger_usb.product | lower }}", TAG+="systemd", ENV{SYSTEMD_WANTS}+="ddc-input-claim.service"

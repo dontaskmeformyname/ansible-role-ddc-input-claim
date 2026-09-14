@@ -1,0 +1,85 @@
+---
+- name: Konfiguration validieren
+  ansible.builtin.assert:
+    that:
+      - ddc_claim_actions | length > 0
+      - ddc_claim_retries | int > 0
+      - ddc_claim_retry_delay | int >= 0
+      - ddc_gate_monitor.edid_mfg | length > 0
+      - ddc_gate_kvm_usb.vendor | length > 0
+      - ddc_gate_kvm_usb.product | length > 0
+      - ddc_gate_trigger_usb.vendor | length > 0
+      - ddc_gate_trigger_usb.product | length > 0
+      - ddc_claim_actions | map(attribute='bus') | select('string') | list | length == ddc_claim_actions | length
+      - ddc_claim_actions | map(attribute='feature') | select('string') | list | length == ddc_claim_actions | length
+      - ddc_claim_actions | map(attribute='value') | select('string') | list | length == ddc_claim_actions | length
+    fail_msg: >-
+      ddc_input_claim erfordert mindestens eine Aktion sowie vollstaendige
+      Monitor-, KVM-Hub- und Trigger-USB-Gates.
+
+- name: ddcutil installieren
+  ansible.builtin.package:
+    name: ddcutil
+    state: present
+
+- name: i2c-dev beim Boot laden
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/i2c-dev.conf
+    content: "i2c-dev\n"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: i2c-dev sofort laden
+  community.general.modprobe:
+    name: i2c-dev
+    state: present
+
+- name: libexec-Verzeichnis bereitstellen
+  ansible.builtin.file:
+    path: /usr/local/libexec
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: DDC-Gate-Skript installieren
+  ansible.builtin.template:
+    src: ddc-input-gates.j2
+    dest: /usr/local/libexec/ddc-input-gates
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: DDC-Claim-Skript installieren
+  ansible.builtin.template:
+    src: ddc-input-claim.j2
+    dest: /usr/local/libexec/ddc-input-claim
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: systemd Claim-Service installieren
+  ansible.builtin.template:
+    src: ddc-input-claim.service.j2
+    dest: /etc/systemd/system/ddc-input-claim.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: systemd daemon neu laden
+
+- name: udev Trigger-Regel installieren
+  ansible.builtin.template:
+    src: 99-ddc-input-claim.rules.j2
+    dest: /etc/udev/rules.d/99-ddc-input-claim.rules
+    owner: root
+    group: root
+    mode: "0644"
+  notify: udev Regeln neu laden
+
+- name: systemd Claim beim Boot aktivieren
+  ansible.builtin.systemd_service:
+    name: ddc-input-claim.service
+    enabled: "{{ ddc_claim_boot_enabled }}"
+    state: "{{ 'started' if ddc_claim_boot_enabled else 'stopped' }}"
+  when: ddc_claim_boot_enabled | bool

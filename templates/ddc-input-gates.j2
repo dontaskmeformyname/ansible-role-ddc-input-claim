@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+set -u
+
+log() { /usr/bin/logger -t ddc-input-gates -- "$*"; }
+
+has_usb_device() {
+    local vendor="$1" product="$2" path v p
+    for path in /sys/bus/usb/devices/*; do
+        [ -r "$path/idVendor" ] && [ -r "$path/idProduct" ] || continue
+        read -r v < "$path/idVendor"
+        read -r p < "$path/idProduct"
+        if [ "${v,,}" = "${vendor,,}" ] && [ "${p,,}" = "${product,,}" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+monitor_present() {
+    local status edid hex mfg name
+    for status in /sys/class/drm/card*-*/status; do
+        [ -r "$status" ] || continue
+        [ "$(cat "$status")" = "connected" ] || continue
+        edid="${status%/status}/edid"
+        [ -r "$edid" ] || continue
+        hex="$(/usr/bin/xxd -p "$edid" 2>/dev/null | tr -d '\n')"
+        [ -n "$hex" ] || continue
+        mfg="$(printf '%s' "$hex" | /usr/bin/cut -c17-20)"
+        # Samsung EISA ID SAM encodiert als 4c2d in den EDID-Bytes 8-9.
+        if [ "{{ ddc_gate_monitor.edid_mfg | upper }}" = "SAM" ] && [ "$mfg" != "4c2d" ]; then
+            continue
+        fi
+        {% if ddc_gate_monitor.edid_name | length > 0 %}
+        name="$(/usr/bin/strings "$edid" 2>/dev/null || true)"
+        printf '%s\n' "$name" | /usr/bin/grep -Fqi -- '{{ ddc_gate_monitor.edid_name }}' || continue
+        {% endif %}
+        return 0
+    done
+    return 1
+}
+
+trigger_is_child_of_kvm() {
+    local path v p parent pv pp found
+    for path in /sys/bus/usb/devices/*; do
+        [ -r "$path/idVendor" ] && [ -r "$path/idProduct" ] || continue
+        read -r v < "$path/idVendor"
+        read -r p < "$path/idProduct"
+        [ "${v,,}" = "{{ ddc_gate_trigger_usb.vendor | lower }}" ] || continue
+        [ "${p,,}" = "{{ ddc_gate_trigger_usb.product | lower }}" ] || continue
+        parent="$path"
+        while [ "$parent" != "/sys" ] && [ "$parent" != "/" ]; do
+            parent="$(/usr/bin/dirname "$parent")"
+            [ -r "$parent/idVendor" ] && [ -r "$parent/idProduct" ] || continue
+            read -r pv < "$parent/idVendor"
+            read -r pp < "$parent/idProduct"
+            if [ "${pv,,}" = "{{ ddc_gate_kvm_usb.vendor | lower }}" ] && [ "${pp,,}" = "{{ ddc_gate_kvm_usb.product | lower }}" ]; then
+                return 0
+            fi
+        done
+    done
+    return 1
+}
+
+case "${1:-check}" in
+    check)
+        monitor_present || exit 1
+        has_usb_device '{{ ddc_gate_kvm_usb.vendor }}' '{{ ddc_gate_kvm_usb.product }}' || exit 1
+        trigger_is_child_of_kvm || exit 1
+        exit 0
+        ;;
+    *)
+        echo "Usage: $0 check" >&2
+        exit 2
+        ;;
+esac
